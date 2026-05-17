@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
         COALESCE(SUM(s.total), 0) AS total_sales,
         COALESCE(SUM(s.profit), 0) AS total_profit,
         COALESCE(SUM(s.discount), 0) AS total_discount
-      FROM sales s WHERE ${dateFilter}
+      FROM sales s WHERE ${dateFilter} AND s.is_manual_debt = FALSE
     `)
 
     const [payBreakdown] = await query(`
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
         COALESCE(SUM(CASE WHEN sp.method='kcb' THEN sp.amount ELSE 0 END), 0) AS kcb_sales,
         COALESCE(SUM(CASE WHEN sp.method='credit' THEN sp.amount ELSE 0 END), 0) AS credit_sales
       FROM sale_payments sp JOIN sales s ON s.id = sp.sale_id
-      WHERE ${dateFilter}
+      WHERE ${dateFilter} AND s.is_manual_debt = FALSE
     `)
 
     const [expenseSummary] = await query(`
@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
         COALESCE(SUM(total), 0) AS sales,
         COALESCE(SUM(profit), 0) AS profit,
         COUNT(*) AS tx_count
-      FROM sales WHERE ${dateFilter.replace(/^s\./, '')}
+      FROM sales WHERE ${dateFilter.replace(/^s\./, '')} AND is_manual_debt = FALSE
       GROUP BY sale_date ORDER BY sale_date
     `)
 
@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
         SUM(si.subtotal) AS revenue,
         SUM(si.profit) AS profit
       FROM sale_items si JOIN sales s ON s.id = si.sale_id
-      WHERE ${dateFilter}
+      WHERE ${dateFilter} AND s.is_manual_debt = FALSE
       GROUP BY si.product_name ORDER BY revenue DESC LIMIT 10
     `)
 

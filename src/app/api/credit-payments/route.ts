@@ -16,12 +16,83 @@ export async function GET(req: NextRequest) {
       JOIN sales s ON s.id = cp.sale_id
       WHERE ($1 = '' OR cp.paid_date::text = $1)
         AND ($2 = '' OR TO_CHAR(cp.paid_date, 'YYYY-MM') = $2)
+        AND cp.method != 'adjustment'
       ORDER BY cp.created_at DESC
     `, [date, month])
 
     return NextResponse.json({ data: rows })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
+  }
+}
+
+// PATCH /api/credit-payments — edit debt amount on a manual or credit sale
+export async function PATCH(req: NextRequest) {
+  const client = await pool.connect()
+  try {
+    const { sale_id, new_amount, reason } = await req.json()
+    if (!sale_id || !new_amount || !reason) {
+      return NextResponse.json({ error: 'sale_id, new_amount, and reason are required' }, { status: 400 })
+    }
+    if (Number(new_amount) <= 0) {
+      return NextResponse.json({ error: 'Amount must be greater than 0' }, { status: 400 })
+    }
+
+    await client.query('BEGIN')
+
+    const sale = await client.query('SELECT * FROM sales WHERE id=$1 FOR UPDATE', [sale_id])
+    if (!sale.rows[0]) throw new Error('Sale/debt not found')
+    if (sale.rows[0].status === 'paid') throw new Error('Cannot edit a fully paid debt')
+
+    const oldAmount = Number(sale.rows[0].total)
+    const newAmt = Number(new_amount)
+
+    // Get total already paid via credit_payments
+    const paidRes = await client.query(
+      'SELECT COALESCE(SUM(amount), 0) as total FROM credit_payments WHERE sale_id=$1 AND method != $2',
+      [sale_id, 'adjustment']
+    )
+    const alreadyPaid = Number(paidRes.rows[0].total)
+
+    if (newAmt < alreadyPaid) {
+      throw new Error(`New amount (${newAmt}) cannot be less than already paid amount (${alreadyPaid})`)
+    }
+
+    // Update the sale total and subtotal
+    await client.query(
+      `UPDATE sales SET total = $1, subtotal = $1 WHERE id = $2`,
+      [newAmt, sale_id]
+    )
+
+    // Update sale_payments for credit entry
+    await client.query(
+      `UPDATE sale_payments SET amount = $1 WHERE sale_id = $2 AND method = 'credit'`,
+      [newAmt, sale_id]
+    )
+
+    // Record the change as a note in credit_payments for audit trail
+    await client.query(
+      `INSERT INTO credit_payments (sale_id, amount, method, reference, note, paid_date)
+       VALUES ($1, 0, 'adjustment', $2, $3, CURRENT_DATE)`,
+      [sale_id, `Debt changed: ${oldAmount} → ${newAmt}`, `EDIT: ${reason}`]
+    )
+
+    await client.query('COMMIT')
+
+    return NextResponse.json({
+      data: {
+        sale_id,
+        old_amount: oldAmount,
+        new_amount: newAmt,
+        reason,
+        remaining: newAmt - alreadyPaid,
+      }
+    })
+  } catch (e: any) {
+    await client.query('ROLLBACK')
+    return NextResponse.json({ error: e.message }, { status: 500 })
+  } finally {
+    client.release()
   }
 }
 
@@ -96,9 +167,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Check total paid so far
+    // Check total paid so far (exclude adjustment audit entries)
     const totalPaidRes = await client.query(
-      'SELECT COALESCE(SUM(amount), 0) as total FROM credit_payments WHERE sale_id=$1',
+      "SELECT COALESCE(SUM(amount), 0) as total FROM credit_payments WHERE sale_id=$1 AND method != 'adjustment'",
       [sale_id]
     )
     const creditAmount = Number(sale.rows[0].total)
@@ -108,7 +179,7 @@ export async function POST(req: NextRequest) {
     if (paidSoFar >= creditAmount - 0.5) {
       // Determine primary payment method from all credit payments
       const methodRes = await client.query(
-        `SELECT method, SUM(amount) as total FROM credit_payments WHERE sale_id=$1 GROUP BY method ORDER BY total DESC LIMIT 1`,
+        `SELECT method, SUM(amount) as total FROM credit_payments WHERE sale_id=$1 AND method != 'adjustment' GROUP BY method ORDER BY total DESC LIMIT 1`,
         [sale_id]
       )
       const primaryMethod = methodRes.rows[0]?.method || 'cash'

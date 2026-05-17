@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 import { useAuth } from '@/components/AuthContext'
 
-const CATEGORIES = ['Flour & Unga', 'Sugar & Salt', 'Cooking Oil', 'Rice & Cereals', 'Beverages', 'Tea & Coffee', 'Dairy & Eggs', 'Bread & Bakery', 'Snacks & Biscuits', 'Canned Goods', 'Spices & Seasoning', 'Toiletries & Soap', 'Detergents & Cleaning', 'Baby Products', 'Stationery', 'Airtime & Scratch Cards', 'Charcoal & Fuel', 'Hardware & Tools', 'Animal Feed', 'Tobacco & Cigarettes', 'Sweets & Candy', 'Soft Drinks & Juices', 'Water', 'Maize & Beans', 'Pasta & Noodles', 'Margarine & Spreads', 'Tissue & Paper', 'Matches & Candles', 'Other']
+const CATEGORIES = ['Airtime & Scratch Cards', 'Animal Feed', 'Baby Products', 'Beverages', 'Bread & Bakery', 'Canned Goods', 'Charcoal & Fuel', 'Cleaning', 'Cooking Oil', 'Dairy & Eggs', 'Detergents & Cleaning', 'Flour & Unga', 'Hardware & Tools', 'Maize & Beans', 'Margarine & Spreads', 'Matches & Candles', 'Other', 'Pasta & Noodles', 'Rice & Cereals', 'Snacks & Biscuits', 'Soft Drinks & Juices', 'Spices & Seasoning', 'Stationery', 'Sugar & Salt', 'Sweets & Candy', 'Tea & Coffee', 'Tissue & Paper', 'Tobacco & Cigarettes', 'Toiletries & Soap', 'Water']
 const SELL_MODES = [
   { val: 'both', label: 'Both retail & wholesale' },
   { val: 'denominations', label: 'Retail by denomination only' },
@@ -39,7 +39,7 @@ export default function AddStockPage() {
     qty: '', base_unit: 'litre', base_qty: '1',
     buy_price: '', transport_cost: '0',
     ws_price: '', ws_buy_price: '', retail_price: '',
-    ws_pack_qty: '20', ws_pack_label: '20L jerry',
+    ws_pack_qty: '20', ws_pack_label: '',
     low_stock_threshold: '5', sell_mode: 'both',
   })
   const [denoms, setDenoms] = useState<Denom[]>(DENOM_TEMPLATES['litre'])
@@ -116,7 +116,7 @@ export default function AddStockPage() {
         <div className="duka-card-title">📦 Product Details</div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="col-span-2"><label className="duka-label">Product Name *</label>
-            <input className="duka-input" placeholder="e.g. Cooking Oil, Sugar" value={form.name} onChange={e => set('name', e.target.value)} /></div>
+            <input className="duka-input" placeholder="e.g. Cooking Oil, Sugar" value={form.name} onChange={e => { set('name', e.target.value); set('ws_pack_label', e.target.value) }} /></div>
           <div><label className="duka-label">Category</label>
             <select className="duka-input duka-select" value={form.category} onChange={e => set('category', e.target.value)}>
               {CATEGORIES.map(c => <option key={c}>{c}</option>)}
@@ -124,7 +124,7 @@ export default function AddStockPage() {
           <div><label className="duka-label">Supplier</label>
             <input className="duka-input" placeholder="e.g. Bidco" value={form.supplier} onChange={e => set('supplier', e.target.value)} /></div>
           <div><label className="duka-label">Quantity Received *</label>
-            <input type="number" className="duka-input" value={form.qty} onChange={e => set('qty', e.target.value)} /></div>
+            <input type="number" step="1" min="1" className="duka-input" value={form.qty} onChange={e => set('qty', e.target.value)} /></div>
           <div><label className="duka-label">Base Unit</label>
             <select className="duka-input duka-select" value={form.base_unit} onChange={e => applyTemplate(e.target.value)}>
               <option value="litre">Litre</option><option value="kg">Kilogram</option>
@@ -163,7 +163,7 @@ export default function AddStockPage() {
           <div className="duka-card-title">📦 Wholesale Pricing</div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div><label className="duka-label">WS Pack Size ({form.base_unit}s per pack)</label>
-              <input type="number" step="0.01" className="duka-input" value={form.ws_pack_qty} onChange={e => set('ws_pack_qty', e.target.value)} /></div>
+              <input type="number" step="1" min="1" className="duka-input" value={form.ws_pack_qty} onChange={e => set('ws_pack_qty', e.target.value)} /></div>
             <div><label className="duka-label">WS Pack Label</label>
               <input className="duka-input" placeholder="e.g. 20L jerry, bale (12)" value={form.ws_pack_label} onChange={e => set('ws_pack_label', e.target.value)} /></div>
             <div><label className="duka-label">WS Buying Price per Pack (KES)</label>
@@ -179,7 +179,7 @@ export default function AddStockPage() {
                 </p>
               )}</div>
             <div><label className="duka-label">Low Stock Alert ({form.base_unit}s)</label>
-              <input type="number" className="duka-input" value={form.low_stock_threshold} onChange={e => set('low_stock_threshold', e.target.value)} /></div>
+              <input type="number" step="1" min="0" className="duka-input" value={form.low_stock_threshold} onChange={e => set('low_stock_threshold', e.target.value)} /></div>
           </div>
         </div>
       )}

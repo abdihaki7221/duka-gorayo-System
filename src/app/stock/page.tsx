@@ -175,12 +175,12 @@ export default function StockPage() {
                 <input className="duka-input" value={editProduct.name||''} onChange={e => setEditProduct({...editProduct, name:e.target.value})} /></div>
               <div><label className="duka-label">Category</label>
                 <select className="duka-input duka-select" value={editProduct.category||'Other'} onChange={e => setEditProduct({...editProduct, category:e.target.value})}>
-                  {['Flour & Unga','Sugar & Salt','Cooking Oil','Rice & Cereals','Beverages','Cleaning','Dairy & Eggs','Toiletries & Soap','Snacks & Biscuits','Tea & Coffee','Spices & Seasoning','Bread & Bakery','Canned Goods','Detergents & Cleaning','Baby Products','Stationery','Airtime & Scratch Cards','Charcoal & Fuel','Hardware & Tools','Animal Feed','Tobacco & Cigarettes','Other'].map(c => <option key={c} value={c}>{c}</option>)}
+                  {['Airtime & Scratch Cards','Animal Feed','Baby Products','Beverages','Bread & Bakery','Canned Goods','Charcoal & Fuel','Cleaning','Cooking Oil','Dairy & Eggs','Detergents & Cleaning','Flour & Unga','Hardware & Tools','Maize & Beans','Margarine & Spreads','Matches & Candles','Other','Pasta & Noodles','Rice & Cereals','Snacks & Biscuits','Soft Drinks & Juices','Spices & Seasoning','Stationery','Sugar & Salt','Sweets & Candy','Tea & Coffee','Tissue & Paper','Tobacco & Cigarettes','Toiletries & Soap','Water'].map(c => <option key={c} value={c}>{c}</option>)}
                 </select></div>
               <div><label className="duka-label">Supplier</label>
                 <input className="duka-input" value={editProduct.supplier||''} onChange={e => setEditProduct({...editProduct, supplier:e.target.value})} /></div>
               <div><label className="duka-label">Qty ({editProduct.base_unit}s)</label>
-                <input type="number" className="duka-input" value={editProduct.qty||''} onChange={e => setEditProduct({...editProduct, qty:e.target.value})} /></div>
+                <input type="number" step="1" min="0" className="duka-input" value={editProduct.qty||''} onChange={e => setEditProduct({...editProduct, qty:e.target.value})} /></div>
               <div><label className="duka-label">Buy Price / {editProduct.base_unit}</label>
                 <input type="number" step="0.01" className="duka-input" value={editProduct.buy_price||''} onChange={e => setEditProduct({...editProduct, buy_price:e.target.value})} /></div>
               <div><label className="duka-label">WS Sell Price / pack</label>
@@ -189,11 +189,11 @@ export default function StockPage() {
                 <input type="number" step="0.01" className="duka-input" value={editProduct.ws_buy_price||''} onChange={e => setEditProduct({...editProduct, ws_buy_price:e.target.value})} />
                 <p className="text-xs text-muted mt-1">What you pay per wholesale pack</p></div>
               <div><label className="duka-label">WS Pack Qty</label>
-                <input type="number" className="duka-input" value={editProduct.ws_pack_qty||''} onChange={e => setEditProduct({...editProduct, ws_pack_qty:e.target.value})} /></div>
+                <input type="number" step="1" min="1" className="duka-input" value={editProduct.ws_pack_qty||''} onChange={e => setEditProduct({...editProduct, ws_pack_qty:e.target.value})} /></div>
               <div><label className="duka-label">WS Pack Label</label>
                 <input className="duka-input" value={editProduct.ws_pack_label||''} onChange={e => setEditProduct({...editProduct, ws_pack_label:e.target.value})} /></div>
               <div><label className="duka-label">Low Stock Threshold</label>
-                <input type="number" className="duka-input" value={editProduct.low_stock_threshold||''} onChange={e => setEditProduct({...editProduct, low_stock_threshold:e.target.value})} /></div>
+                <input type="number" step="1" min="0" className="duka-input" value={editProduct.low_stock_threshold||''} onChange={e => setEditProduct({...editProduct, low_stock_threshold:e.target.value})} /></div>
             </div>
 
             {(editProduct.denominations||[]).length > 0 && (

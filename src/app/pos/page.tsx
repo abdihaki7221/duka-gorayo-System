@@ -87,7 +87,7 @@ export default function POSPage() {
       !search || p.name.toLowerCase().includes(search.toLowerCase()) ||
       p.category.toLowerCase().includes(search.toLowerCase())
     )
-  )
+  ).sort((a, b) => a.name.localeCompare(b.name))
 
   function addToCart() {
     if (!selProduct) return toast.error('Select a product')
@@ -198,7 +198,28 @@ export default function POSPage() {
                 <input className="duka-input mb-2" placeholder="🔍 Search products..." value={search}
                   onChange={e => { setSearch(e.target.value); setSelProductId('') }} />
                 <select className="duka-input duka-select" value={selProductId}
-                  onChange={e => { setSelProductId(e.target.value); setSelDenomId(''); setSelSaleType('retail_denom'); setSearch('') }}>
+                  onChange={e => {
+                    const pid = e.target.value
+                    setSelProductId(pid)
+                    setSelDenomId('')
+                    setSearch('')
+                    // Set default sale type based on product's sell_mode
+                    const prod = products.find(p => p.id === Number(pid))
+                    if (prod) {
+                      if (prod.sell_mode === 'wholesale_units') {
+                        setSelSaleType('wholesale')
+                      } else if (prod.sell_mode === 'denominations') {
+                        const pDenoms = prod.denominations || []
+                        setSelSaleType(pDenoms.length > 0 ? 'retail_denom' : 'retail')
+                      } else {
+                        // 'both' — default to retail denomination if available
+                        const pDenoms = prod.denominations || []
+                        setSelSaleType(pDenoms.length > 0 ? 'retail_denom' : 'retail')
+                      }
+                    } else {
+                      setSelSaleType('retail_denom')
+                    }
+                  }}>
                   <option value="">-- Select product --</option>
                   {filteredProducts.map(p => (
                     <option key={p.id} value={p.id}>{p.name} ({Number(p.qty).toFixed(1)} {p.base_unit})</option>
@@ -252,7 +273,7 @@ export default function POSPage() {
             <div className="flex gap-3">
               <div className="flex-1">
                 <label className="duka-label">Quantity</label>
-                <input type="number" min="0.01" step="0.01" className="duka-input" value={qty}
+                <input type="number" min="1" step="1" className="duka-input" value={qty}
                   onChange={e => setQty(Number(e.target.value))} />
               </div>
               <div className="flex-1">

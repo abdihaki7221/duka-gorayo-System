@@ -56,16 +56,17 @@ export default function SalesPage() {
     finally { setRefunding(false) }
   }
 
-  const totalSales  = sales.filter(s => !s.is_refund).reduce((a, s) => a + Number(s.total), 0)
-  const totalRefunds = sales.filter(s => s.is_refund).reduce((a, s) => a + Math.abs(Number(s.total)), 0)
-  const totalProfit = sales.reduce((a, s) => a + Number(s.profit), 0)
+  const displaySales = sales.filter(s => !s.is_manual_debt)
+  const totalSales  = displaySales.filter(s => !s.is_refund).reduce((a, s) => a + Number(s.total), 0)
+  const totalRefunds = displaySales.filter(s => s.is_refund).reduce((a, s) => a + Math.abs(Number(s.total)), 0)
+  const totalProfit = displaySales.reduce((a, s) => a + Number(s.profit), 0)
 
   return (
     <div className="animate-in">
       <div className="mb-6">
         <h1 className="page-title">Sales History</h1>
         <p className="page-sub">
-          {sales.length} records · Sales: <strong className="text-accent">{fmt(totalSales)}</strong>
+          {displaySales.length} records · Sales: <strong className="text-accent">{fmt(totalSales)}</strong>
           {totalRefunds > 0 && <> · Refunds: <strong className="text-red">{fmt(totalRefunds)}</strong></>}
           {isSuperAdmin && <> · Profit: <strong className="text-green">{fmt(totalProfit)}</strong></>}
         </p>
@@ -86,7 +87,7 @@ export default function SalesPage() {
       </div>
 
       <div className="duka-card">
-        {loading ? <div className="empty-state">Loading...</div> : sales.length === 0 ? <div className="empty-state">No sales found</div> : (
+        {loading ? <div className="empty-state">Loading...</div> : displaySales.length === 0 ? <div className="empty-state">No sales found</div> : (
           <div className="table-wrap">
             <table className="duka-table">
               <thead><tr>
@@ -94,7 +95,7 @@ export default function SalesPage() {
                 <th>Total</th>{isSuperAdmin && <th>Profit</th>}<th>Payment</th><th>Status</th><th>Actions</th>
               </tr></thead>
               <tbody>
-                {sales.map(s => {
+                {sales.filter(s => !s.is_manual_debt).map(s => {
                   const payments: any[] = (s.payments||[]).filter(Boolean)
                   const items: any[] = (s.items||[]).filter(Boolean)
                   const isRefund = s.is_refund

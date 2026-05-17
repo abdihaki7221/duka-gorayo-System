@@ -11,7 +11,8 @@
     "db:seed": "node scripts/seed.js",
     "db:seed:v2": "node scripts/seed-v2.js",
     "db:migrate:v3": "node scripts/migrate-v3.js",
-    "db:setup": "node scripts/migrate-v3.js"
+    "db:setup": "node scripts/migrate-v3.js",
+    "db:fix": "node scripts/fix-v4.js"
   },
   "dependencies": {
     "date-fns": "^3.6.0",

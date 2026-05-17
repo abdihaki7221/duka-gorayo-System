@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
     prev.setDate(prev.getDate() - 1)
     const prevStr = prev.toISOString().split('T')[0]
 
-    // Sales totals
+    // Sales totals (exclude manual debts - they are pre-existing debts, not actual sales)
     const [salesSummary] = await query(`
       SELECT
         COUNT(DISTINCT s.id) AS tx_count,
@@ -18,10 +18,10 @@ export async function GET(req: NextRequest) {
         COALESCE(SUM(s.profit), 0) AS total_profit,
         COALESCE(SUM(s.discount), 0) AS total_discount,
         COALESCE(SUM(CASE WHEN s.status='pending' THEN s.total ELSE 0 END), 0) AS pending_amount
-      FROM sales s WHERE s.sale_date = $1
+      FROM sales s WHERE s.sale_date = $1 AND s.is_manual_debt = FALSE
     `, [date])
 
-    // Payment breakdown
+    // Payment breakdown (exclude manual debts)
     const [payBreakdown] = await query(`
       SELECT
         COALESCE(SUM(CASE WHEN sp.method='cash'   THEN sp.amount ELSE 0 END), 0) AS cash_sales,
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
         COALESCE(SUM(CASE WHEN sp.method='credit' THEN sp.amount ELSE 0 END), 0) AS credit_sales
       FROM sale_payments sp
       JOIN sales s ON s.id = sp.sale_id
-      WHERE s.sale_date = $1
+      WHERE s.sale_date = $1 AND s.is_manual_debt = FALSE
     `, [date])
 
     // Expenses
@@ -66,11 +66,11 @@ export async function GET(req: NextRequest) {
       FROM credit_payments WHERE paid_date = $1
     `, [date])
 
-    // Previous day safe balance calculation
+    // Previous day safe balance calculation (exclude manual debts)
     const [prevCashSales] = await query(`
       SELECT COALESCE(SUM(sp.amount), 0) AS total
       FROM sale_payments sp JOIN sales s ON s.id = sp.sale_id
-      WHERE s.sale_date = $1 AND sp.method = 'cash'
+      WHERE s.sale_date = $1 AND sp.method = 'cash' AND s.is_manual_debt = FALSE
     `, [prevStr])
 
     const [prevCreditCash] = await query(`
@@ -82,7 +82,9 @@ export async function GET(req: NextRequest) {
       SELECT
         COALESCE(SUM(CASE WHEN type='opening_balance' THEN amount ELSE 0 END), 0) AS opening,
         COALESCE(SUM(CASE WHEN type='owner_withdrawal' THEN amount ELSE 0 END), 0) AS withdrawals,
-        COALESCE(SUM(CASE WHEN type='cash_deposit' THEN amount ELSE 0 END), 0) AS deposits
+        COALESCE(SUM(CASE WHEN type='cash_deposit' THEN amount ELSE 0 END), 0) AS deposits,
+        COALESCE(SUM(CASE WHEN type='cash_excess' THEN amount ELSE 0 END), 0) AS cash_excess,
+        COALESCE(SUM(CASE WHEN type='cash_less' THEN amount ELSE 0 END), 0) AS cash_less
       FROM cash_ledger WHERE ledger_date = $1
     `, [prevStr])
 
@@ -92,8 +94,10 @@ export async function GET(req: NextRequest) {
     `, [prevStr])
 
     const prevSafe = Number(prevLedger.opening) + Number(prevCashSales.total) +
-      Number(prevCreditCash.total) + Number(prevLedger.deposits) -
-      Number(prevLedger.withdrawals) - Number(prevExpCash.total)
+      Number(prevCreditCash.total) + Number(prevLedger.deposits) +
+      Number(prevLedger.cash_excess) -
+      Number(prevLedger.withdrawals) - Number(prevExpCash.total) -
+      Number(prevLedger.cash_less)
 
     // Today's safe
     const openingBal = Number(cashLedger.opening_set) > 0 ? Number(cashLedger.opening_set) : Math.max(0, prevSafe)
@@ -116,14 +120,14 @@ export async function GET(req: NextRequest) {
       GROUP BY s.sale_date ORDER BY s.sale_date
     `, [date])
 
-    // Top products
+    // Top products (exclude manual debts)
     const topProducts = await query(`
       SELECT si.product_name,
         SUM(si.qty) AS qty_sold,
         SUM(si.subtotal) AS revenue,
         SUM(si.profit) AS profit
       FROM sale_items si JOIN sales s ON s.id = si.sale_id
-      WHERE s.sale_date = $1
+      WHERE s.sale_date = $1 AND s.is_manual_debt = FALSE
       GROUP BY si.product_name ORDER BY revenue DESC LIMIT 5
     `, [date])
 

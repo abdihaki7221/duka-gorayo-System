@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { fmt, fmtDate, today } from '@/lib/utils'
 
-const CATEGORIES = ['Transport', 'Employee Salary', 'Utilities', 'Rent', 'Maintenance', 'Miscellaneous', 'Other']
+const CATEGORIES = ['Employee Salary', 'Maintenance', 'Miscellaneous', 'Other', 'Rent', 'Transport', 'Utilities']
 const PAY_BADGE: Record<string,string> = { cash:'badge-green', mpesa:'badge-blue', kcb:'badge-yellow' }
 
 export default function ExpensesPage() {

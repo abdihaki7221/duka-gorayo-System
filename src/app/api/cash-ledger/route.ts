@@ -19,12 +19,12 @@ export async function GET(req: NextRequest) {
     // Also compute safe balance summary
     const today = date || new Date().toISOString().split('T')[0]
 
-    // Cash from sales today
+    // Cash from sales today (exclude manual debts - they are pre-existing debts, not sales)
     const [cashSales] = await query(`
       SELECT COALESCE(SUM(sp.amount), 0) as total
       FROM sale_payments sp
       JOIN sales s ON s.id = sp.sale_id
-      WHERE s.sale_date = $1 AND sp.method = 'cash'
+      WHERE s.sale_date = $1 AND sp.method = 'cash' AND s.is_manual_debt = FALSE
     `, [today])
 
     // Cash from credit clearance today
@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
     const [ydCash] = await query(`
       SELECT COALESCE(SUM(sp.amount), 0) as total
       FROM sale_payments sp JOIN sales s ON s.id = sp.sale_id
-      WHERE s.sale_date = $1 AND sp.method = 'cash'
+      WHERE s.sale_date = $1 AND sp.method = 'cash' AND s.is_manual_debt = FALSE
     `, [yd])
 
     const [ydCreditCash] = await query(`
@@ -70,7 +70,9 @@ export async function GET(req: NextRequest) {
       SELECT
         COALESCE(SUM(CASE WHEN type='opening_balance' THEN amount ELSE 0 END), 0) as opening,
         COALESCE(SUM(CASE WHEN type='owner_withdrawal' THEN amount ELSE 0 END), 0) as withdrawals,
-        COALESCE(SUM(CASE WHEN type='cash_deposit' THEN amount ELSE 0 END), 0) as deposits
+        COALESCE(SUM(CASE WHEN type='cash_deposit' THEN amount ELSE 0 END), 0) as deposits,
+        COALESCE(SUM(CASE WHEN type='cash_excess' THEN amount ELSE 0 END), 0) as cash_excess,
+        COALESCE(SUM(CASE WHEN type='cash_less' THEN amount ELSE 0 END), 0) as cash_less
       FROM cash_ledger WHERE ledger_date = $1
     `, [yd])
 
@@ -80,7 +82,8 @@ export async function GET(req: NextRequest) {
     `, [yd])
 
     const prevSafe = Number(ydLedger.opening) + Number(ydCash.total) + Number(ydCreditCash.total)
-      + Number(ydLedger.deposits) - Number(ydLedger.withdrawals) - Number(ydExpenses[0]?.total || 0)
+      + Number(ydLedger.deposits) + Number(ydLedger.cash_excess)
+      - Number(ydLedger.withdrawals) - Number(ydExpenses[0]?.total || 0) - Number(ydLedger.cash_less)
 
     // Today's expenses (non-stock)
     const [todayExp] = await query(`

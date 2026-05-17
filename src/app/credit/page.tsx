@@ -18,6 +18,9 @@ export default function CreditPage() {
   const [showAddDebt, setShowAddDebt] = useState(false)
   const [debtForm, setDebtForm] = useState({ customer_name: '', amount: '', note: '', debt_date: new Date().toISOString().split('T')[0] })
   const [addingDebt, setAddingDebt] = useState(false)
+  const [editDebtModal, setEditDebtModal] = useState<any>(null)
+  const [editDebtForm, setEditDebtForm] = useState({ new_amount: '', reason: '' })
+  const [editingDebt, setEditingDebt] = useState(false)
 
   function load() {
     setLoading(true)
@@ -107,6 +110,34 @@ export default function CreditPage() {
   }
 
   const totalOwed = credits.reduce((a, s) => a + Number(s.remaining ?? s.total), 0)
+
+  function openEditDebt(s: any) {
+    setEditDebtModal(s)
+    setEditDebtForm({ new_amount: String(Number(s.total)), reason: '' })
+  }
+
+  async function handleEditDebt() {
+    if (!editDebtForm.new_amount || Number(editDebtForm.new_amount) <= 0) return toast.error('Enter a valid amount')
+    if (!editDebtForm.reason.trim()) return toast.error('Reason for change is required')
+    setEditingDebt(true)
+    try {
+      const res = await fetch('/api/credit-payments', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sale_id: editDebtModal.id,
+          new_amount: Number(editDebtForm.new_amount),
+          reason: editDebtForm.reason.trim(),
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast.success(`Debt updated! ${fmt(data.data.old_amount)} → ${fmt(data.data.new_amount)}`)
+      setEditDebtModal(null)
+      load()
+    } catch (e: any) { toast.error(e.message) }
+    finally { setEditingDebt(false) }
+  }
+
   const uniqueCustomers = Array.from(new Set(credits.map(s => s.customer_name)))
 
   return (
@@ -149,7 +180,7 @@ export default function CreditPage() {
                 <th>Customer</th><th>Date</th><th>Receipt</th><th>Original</th><th>Paid</th><th>Balance</th><th>Actions</th>
               </tr></thead>
               <tbody>
-                {credits.map(s => {
+                {[...credits].sort((a, b) => (a.customer_name || '').localeCompare(b.customer_name || '')).map(s => {
                   const paidSoFar = Number(s.paid_so_far || 0)
                   const remaining = Number(s.remaining ?? s.total)
                   return (
@@ -165,6 +196,7 @@ export default function CreditPage() {
                       <td>
                         <div className="flex gap-2 flex-wrap">
                           <button className="btn btn-success btn-sm" onClick={() => openPayModal(s)}>💳 Pay</button>
+                          <button className="btn btn-outline btn-sm" onClick={() => openEditDebt(s)}>✏️ Edit</button>
                           {!s.is_manual_debt && <button className="btn btn-ghost btn-sm" onClick={() => setReceipt(s)}>🧾</button>}
                         </div>
                       </td>
@@ -278,6 +310,38 @@ export default function CreditPage() {
       )}
 
       {receipt && <ReceiptModal sale={receipt} onClose={() => setReceipt(null)} />}
+
+      {/* Edit Debt Amount Modal */}
+      {editDebtModal && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setEditDebtModal(null)}>
+          <div className="modal" style={{ maxWidth: 480 }}>
+            <h2 className="modal-title">✏️ Edit Debt Amount</h2>
+            <div className="bg-surface2 rounded-lg p-4 mb-4">
+              <div className="flex justify-between mb-1"><span className="text-muted text-sm">Customer</span><span className="text-white font-semibold">{editDebtModal.customer_name}</span></div>
+              <div className="flex justify-between mb-1"><span className="text-muted text-sm">Current Amount</span><span className="mono text-red font-bold">{fmt(editDebtModal.total)}</span></div>
+              {Number(editDebtModal.paid_so_far || 0) > 0 && <div className="flex justify-between"><span className="text-muted text-sm">Already Paid</span><span className="mono text-green">{fmt(editDebtModal.paid_so_far)}</span></div>}
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="duka-label">New Debt Amount (KES) *</label>
+                <input type="number" step="0.01" className="duka-input" value={editDebtForm.new_amount}
+                  onChange={e => setEditDebtForm(f => ({...f, new_amount: e.target.value}))} />
+              </div>
+              <div>
+                <label className="duka-label">Reason for Change *</label>
+                <input className="duka-input" placeholder="e.g. Agreed on reduced amount, correction of wrong entry"
+                  value={editDebtForm.reason} onChange={e => setEditDebtForm(f => ({...f, reason: e.target.value}))} />
+              </div>
+              <div className="flex justify-end gap-3">
+                <button className="btn btn-outline" onClick={() => setEditDebtModal(null)}>Cancel</button>
+                <button className="btn btn-primary" onClick={handleEditDebt} disabled={editingDebt}>
+                  {editingDebt ? '⏳...' : '💾 Update Amount'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

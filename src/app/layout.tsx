@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 import { Toaster } from 'react-hot-toast'
 import AppShell from '@/components/AppShell'
+import EnterAsTab from '@/components/EnterAsTab'
 
 export const metadata: Metadata = {
   title: 'Gorayo Wholesalers',
@@ -21,6 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Toaster position="top-right" toastOptions={{
           style: { background: '#181c27', color: '#e8eaf0', border: '1px solid #2a3047' }
         }} />
+        <EnterAsTab />
         <AppShell>{children}</AppShell>
       </body>
     </html>
