@@ -11,6 +11,8 @@ const navItems = [
   { section: 'Inventory' },
   { href: '/stock', label: 'Stock', icon: '📦' },
   { href: '/stock/add', label: 'Add Stock', icon: '➕' },
+  { href: '/categories', label: 'Categories', icon: '📂' },
+  { href: '/suppliers', label: 'Suppliers', icon: '🏭' },
   { section: 'Finance' },
   { href: '/sales', label: 'Sales History', icon: '💰' },
   { href: '/credit', label: 'Credit / Debtors', icon: '📋' },

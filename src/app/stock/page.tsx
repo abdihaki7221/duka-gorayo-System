@@ -18,13 +18,19 @@ export default function StockPage() {
   const [expanded, setExpanded] = useState<number | null>(null)
   const [editProduct, setEditProduct] = useState<any>(null)
   const [saving, setSaving] = useState(false)
+  const [dbCategories, setDbCategories] = useState<any[]>([])
+  const [dbSuppliers, setDbSuppliers] = useState<any[]>([])
 
   function load(q = '') {
     setLoading(true)
     fetch(`/api/products?search=${q}`)
       .then(r => r.json()).then(d => { setProducts(d.data || []); setLoading(false) })
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    fetch('/api/categories').then(r => r.json()).then(d => setDbCategories(d.data || []))
+    fetch('/api/suppliers').then(r => r.json()).then(d => setDbSuppliers(d.data || []))
+  }, [])
 
   async function saveEdit() {
     setSaving(true)
@@ -175,10 +181,19 @@ export default function StockPage() {
                 <input className="duka-input" value={editProduct.name||''} onChange={e => setEditProduct({...editProduct, name:e.target.value})} /></div>
               <div><label className="duka-label">Category</label>
                 <select className="duka-input duka-select" value={editProduct.category||'Other'} onChange={e => setEditProduct({...editProduct, category:e.target.value})}>
-                  {['Airtime & Scratch Cards','Animal Feed','Baby Products','Beverages','Bread & Bakery','Canned Goods','Charcoal & Fuel','Cleaning','Cooking Oil','Dairy & Eggs','Detergents & Cleaning','Flour & Unga','Hardware & Tools','Maize & Beans','Margarine & Spreads','Matches & Candles','Other','Pasta & Noodles','Rice & Cereals','Snacks & Biscuits','Soft Drinks & Juices','Spices & Seasoning','Stationery','Sugar & Salt','Sweets & Candy','Tea & Coffee','Tissue & Paper','Tobacco & Cigarettes','Toiletries & Soap','Water'].map(c => <option key={c} value={c}>{c}</option>)}
+                  {dbCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                  {editProduct.category && !dbCategories.find((c: any) => c.name === editProduct.category) && (
+                    <option value={editProduct.category}>{editProduct.category}</option>
+                  )}
                 </select></div>
               <div><label className="duka-label">Supplier</label>
-                <input className="duka-input" value={editProduct.supplier||''} onChange={e => setEditProduct({...editProduct, supplier:e.target.value})} /></div>
+                <select className="duka-input duka-select" value={editProduct.supplier||''} onChange={e => setEditProduct({...editProduct, supplier:e.target.value})}>
+                  <option value="">-- Select supplier --</option>
+                  {dbSuppliers.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                  {editProduct.supplier && !dbSuppliers.find((s: any) => s.name === editProduct.supplier) && (
+                    <option value={editProduct.supplier}>{editProduct.supplier}</option>
+                  )}
+                </select></div>
               <div><label className="duka-label">Qty ({editProduct.base_unit}s)</label>
                 <input type="number" step="1" min="0" className="duka-input" value={editProduct.qty||''} onChange={e => setEditProduct({...editProduct, qty:e.target.value})} /></div>
               <div><label className="duka-label">Buy Price / {editProduct.base_unit}</label>

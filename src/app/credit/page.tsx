@@ -21,6 +21,9 @@ export default function CreditPage() {
   const [editDebtModal, setEditDebtModal] = useState<any>(null)
   const [editDebtForm, setEditDebtForm] = useState({ new_amount: '', reason: '' })
   const [editingDebt, setEditingDebt] = useState(false)
+  const [creditScores, setCreditScores] = useState<any>(null)
+  const [scoresLoading, setScoresLoading] = useState(true)
+  const [showScores, setShowScores] = useState(false)
 
   function load() {
     setLoading(true)
@@ -45,7 +48,13 @@ export default function CreditPage() {
     fetch('/api/credit-payments').then(r => r.json()).then(d => setRecentPayments(d.data || []))
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    fetch('/api/credit-scores').then(r => r.json()).then(d => {
+      setCreditScores(d.data || null)
+      setScoresLoading(false)
+    }).catch(() => setScoresLoading(false))
+  }, [])
 
   function openPayModal(s: any) {
     setPayModal(s)
@@ -168,6 +177,105 @@ export default function CreditPage() {
         </div>
       </div>
 
+      {/* Fix 7: Credit Score Section */}
+      <div className="duka-card mb-4">
+        <div className="flex justify-between items-center">
+          <div>
+            <div className="duka-card-title" style={{marginBottom:0}}>📊 Customer Credit Scores</div>
+            <p className="text-muted text-xs mt-1">AI-powered risk assessment based on payment history</p>
+          </div>
+          <button className="btn btn-outline btn-sm" onClick={() => setShowScores(!showScores)}>
+            {showScores ? '🔽 Hide' : '▶️ Show'} Scores
+          </button>
+        </div>
+
+        {showScores && !scoresLoading && creditScores && (
+          <div className="mt-4">
+            {/* Shop Summary */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              <div className="bg-surface2 rounded-lg p-3 text-center">
+                <div className="text-xs text-muted uppercase mb-1">Avg Daily Cash</div>
+                <div className="mono text-green font-bold">{fmt(creditScores.shop_summary?.avg_daily_cash_sales || 0)}</div>
+              </div>
+              <div className="bg-surface2 rounded-lg p-3 text-center">
+                <div className="text-xs text-muted uppercase mb-1">Total Outstanding</div>
+                <div className="mono text-red font-bold">{fmt(creditScores.shop_summary?.total_outstanding_credit || 0)}</div>
+              </div>
+              <div className="bg-surface2 rounded-lg p-3 text-center">
+                <div className="text-xs text-muted uppercase mb-1">Credit/Cash Ratio</div>
+                <div className={`mono font-bold ${(creditScores.shop_summary?.credit_to_cash_ratio || 0) > 50 ? 'text-red' : 'text-green'}`}>
+                  {creditScores.shop_summary?.credit_to_cash_ratio || 0}%
+                </div>
+              </div>
+              <div className="bg-surface2 rounded-lg p-3 text-center">
+                <div className="text-xs text-muted uppercase mb-1">Safe Credit Cap</div>
+                <div className="mono text-accent font-bold">{fmt(creditScores.shop_summary?.safe_total_credit_limit || 0)}</div>
+              </div>
+            </div>
+
+            {/* Customer scores table */}
+            {creditScores.customers?.length > 0 && (
+              <div className="table-wrap">
+                <table className="duka-table">
+                  <thead>
+                    <tr>
+                      <th>Customer</th><th>Score</th><th>Risk</th>
+                      <th>Outstanding</th><th>Cleared</th><th>Avg Pay Days</th>
+                      <th>Last Payment</th><th>Credit Limit</th><th>Recommendation</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {creditScores.customers.map((c: any) => {
+                      const riskBadge: Record<string, string> = {
+                        low: 'badge-green', medium: 'badge-yellow', high: 'badge-red', critical: 'badge-red'
+                      }
+                      const riskIcon: Record<string, string> = {
+                        low: '✅', medium: '⚠️', high: '🔴', critical: '🚫'
+                      }
+                      const scoreColor = c.score >= 70 ? 'text-green' : c.score >= 50 ? 'text-yellow' : 'text-red'
+                      return (
+                        <tr key={c.customer_name}>
+                          <td className="text-white font-medium">{c.customer_name}</td>
+                          <td>
+                            <div className="flex items-center gap-2">
+                              <div className="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold border-2"
+                                style={{
+                                  borderColor: c.score >= 70 ? '#3ecf8e' : c.score >= 50 ? '#f5c842' : '#ef4444',
+                                  color: c.score >= 70 ? '#3ecf8e' : c.score >= 50 ? '#f5c842' : '#ef4444',
+                                }}>
+                                {c.score}
+                              </div>
+                            </div>
+                          </td>
+                          <td><span className={`badge ${riskBadge[c.risk]} text-xs`}>{riskIcon[c.risk]} {c.risk.toUpperCase()}</span></td>
+                          <td className="mono text-red font-semibold">{fmt(c.pending_amount)}</td>
+                          <td className="mono text-green">{c.cleared_debts}/{c.total_credit_sales}</td>
+                          <td className="mono text-muted">{c.avg_days_to_pay !== null ? `${c.avg_days_to_pay}d` : '—'}</td>
+                          <td className="text-muted text-xs">
+                            {c.last_payment_date ? (
+                              <>{new Date(c.last_payment_date).toLocaleDateString('en-KE', {day:'2-digit',month:'short'})}
+                                <span className="mono text-green ml-1">{fmt(c.last_payment_amount)}</span>
+                              </>
+                            ) : 'Never'}
+                          </td>
+                          <td className={`mono font-bold ${c.recommended_limit > 0 ? 'text-accent' : 'text-red'}`}>
+                            {c.recommended_limit > 0 ? fmt(c.recommended_limit) : 'KES 0'}
+                          </td>
+                          <td className="text-xs" style={{maxWidth:200}}>
+                            <div className="text-muted">{c.recommendation}</div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+        {showScores && scoresLoading && <div className="empty-state py-4 mt-4">Loading credit scores...</div>}
+      </div>
+
       {/* Outstanding debts */}
       <div className="duka-card mb-4">
         <div className="duka-card-title">📋 Outstanding Debts</div>
@@ -185,8 +293,15 @@ export default function CreditPage() {
                   const remaining = Number(s.remaining ?? s.total)
                   return (
                     <tr key={s.id}>
-                      <td className="text-white font-medium">{s.customer_name}
+                      <td className="text-white font-medium">
+                        {s.customer_name}
                         {s.is_manual_debt && <span className="badge badge-gray ml-2 text-xs">manual</span>}
+                        {(() => {
+                          const cs = creditScores?.customers?.find((c: any) => c.customer_name === s.customer_name)
+                          if (!cs) return null
+                          const badge = cs.risk === 'low' ? 'badge-green' : cs.risk === 'medium' ? 'badge-yellow' : 'badge-red'
+                          return <span className={`badge ${badge} ml-1 text-xs`} title={`Credit Score: ${cs.score}/100`}>{cs.score}pts</span>
+                        })()}
                       </td>
                       <td>{fmtDate(s.sale_date)}</td>
                       <td className="mono text-xs">{s.receipt_no}</td>

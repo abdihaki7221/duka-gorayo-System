@@ -205,6 +205,34 @@ ALTER TABLE sales ADD COLUMN IF NOT EXISTS is_refund BOOLEAN NOT NULL DEFAULT FA
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS refund_of_sale_id INTEGER REFERENCES sales(id);
 ALTER TABLE sales ADD COLUMN IF NOT EXISTS refund_method VARCHAR(20);
 
+-- V5: Categories and Suppliers management
+CREATE TABLE IF NOT EXISTS categories (
+  id          SERIAL PRIMARY KEY,
+  name        VARCHAR(200) NOT NULL UNIQUE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS suppliers (
+  id          SERIAL PRIMARY KEY,
+  name        VARCHAR(200) NOT NULL,
+  phone       VARCHAR(50),
+  email       VARCHAR(200),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Seed default categories if table is empty
+INSERT INTO categories (name) VALUES
+  ('Airtime & Scratch Cards'),('Animal Feed'),('Baby Products'),('Beverages'),
+  ('Bread & Bakery'),('Canned Goods'),('Charcoal & Fuel'),('Cleaning'),
+  ('Cooking Oil'),('Dairy & Eggs'),('Detergents & Cleaning'),('Flour & Unga'),
+  ('Hardware & Tools'),('Maize & Beans'),('Margarine & Spreads'),('Matches & Candles'),
+  ('Other'),('Pasta & Noodles'),('Rice & Cereals'),('Snacks & Biscuits'),
+  ('Soft Drinks & Juices'),('Spices & Seasoning'),('Stationery'),('Sugar & Salt'),
+  ('Sweets & Candy'),('Tea & Coffee'),('Tissue & Paper'),('Tobacco & Cigarettes'),
+  ('Toiletries & Soap'),('Water')
+ON CONFLICT (name) DO NOTHING;
+
+
 `
 
 async function run() {

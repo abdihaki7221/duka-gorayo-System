@@ -107,7 +107,8 @@ export default function MonthlyPage() {
         </div>}
         <div className="stat-card red">
           <div className="stat-label">Expenses</div>
-          <div className="stat-value">{Number(e.total_expenses||0).toLocaleString('en-KE',{maximumFractionDigits:0})}</div>
+          <div className="stat-value">{Number(e.operational_expenses||e.total_expenses||0).toLocaleString('en-KE',{maximumFractionDigits:0})}</div>
+          <div className="stat-sub">Operational (excl. stock inventory)</div>
         </div>
         <div className="stat-card red">
           <div className="stat-label">Owner Withdrawals</div>

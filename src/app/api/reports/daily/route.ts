@@ -177,7 +177,8 @@ export async function GET(req: NextRequest) {
         credit_payments_today: creditPayments,
         mpesa_total: Number(payBreakdown.mpesa_sales) + Number(creditPayments.mpesa_received),
         kcb_total: Number(payBreakdown.kcb_sales) + Number(creditPayments.kcb_received),
-        net_profit: Number(salesSummary.total_profit) - Number(expenseSummary.total_expenses),
+        // Net profit: gross profit minus operational expenses only (stock purchases are inventory, not expense)
+        net_profit: Number(salesSummary.total_profit) - (Number(expenseSummary.total_expenses) - Number(expenseSummary.stock_expenses)),
         trend,
         top_products: topProducts,
         today_sales: todaySales,

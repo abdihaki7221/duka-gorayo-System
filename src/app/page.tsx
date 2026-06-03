@@ -13,6 +13,8 @@ export default function Dashboard() {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [dateFilter, setDateFilter] = useState(today())
+  const [recommendations, setRecommendations] = useState<any[]>([])
+  const [recsLoading, setRecsLoading] = useState(true)
 
   const load = useCallback((d?: string) => {
     const dt = d || dateFilter
@@ -25,6 +27,11 @@ export default function Dashboard() {
     setLoading(true)
     load()
     const t = setInterval(() => load(), 30000)
+    // Fetch stock recommendations
+    fetch('/api/stock-recommendations').then(r => r.json()).then(d => {
+      setRecommendations(d.data || [])
+      setRecsLoading(false)
+    }).catch(() => setRecsLoading(false))
     return () => clearInterval(t)
   }, [dateFilter, load])
 
@@ -248,6 +255,67 @@ export default function Dashboard() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Fix 6: Stock Order Recommendations */}
+      {!recsLoading && recommendations.length > 0 && (
+        <div className="duka-card mt-4">
+          <div className="duka-card-title">
+            📋 Stock Order Recommendations
+            <span className="badge badge-red text-xs ml-2">{recommendations.length} items</span>
+          </div>
+          <p className="text-muted text-xs mb-3">
+            Based on sales velocity, profit contribution, and stock levels from the last 30 days.
+          </p>
+          <div className="table-wrap">
+            <table className="duka-table">
+              <thead>
+                <tr>
+                  <th>Product</th><th>In Stock</th><th>Days Left</th>
+                  <th>Urgency</th><th>Daily Sales</th>
+                  {isSuperAdmin && <th>30d Profit</th>}
+                  <th>Order Qty</th>
+                  {isSuperAdmin && <th>Est. Cost</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {recommendations.slice(0, 15).map((r: any) => {
+                  const urgencyBadge: Record<string, string> = {
+                    critical: 'badge-red', high: 'badge-yellow', medium: 'badge-blue', low: 'badge-gray'
+                  }
+                  const urgencyLabel: Record<string, string> = {
+                    critical: '🔴 Order Now', high: '🟡 Soon', medium: '🔵 Plan', low: '⚪ Monitor'
+                  }
+                  return (
+                    <tr key={r.id}>
+                      <td>
+                        <div className="text-white font-medium">{r.name}</div>
+                        <div className="text-xs text-muted">{r.category}{r.supplier ? ` · ${r.supplier}` : ''}</div>
+                      </td>
+                      <td className={`mono ${r.current_qty === 0 ? 'text-red font-bold' : r.current_qty <= 5 ? 'text-yellow' : ''}`}>
+                        {r.current_qty} {r.base_unit}s
+                      </td>
+                      <td className={`mono font-semibold ${r.days_left <= 3 ? 'text-red' : r.days_left <= 7 ? 'text-yellow' : ''}`}>
+                        {r.days_left === 0 ? 'OUT' : `${r.days_left}d`}
+                      </td>
+                      <td><span className={`badge ${urgencyBadge[r.urgency]} text-xs`}>{urgencyLabel[r.urgency]}</span></td>
+                      <td className="mono text-muted">{r.daily_rate}/{r.base_unit}/day</td>
+                      {isSuperAdmin && <td className="mono text-yellow">{fmt(r.profit_30d)}</td>}
+                      <td className="mono text-accent font-bold">
+                        {r.recommended_order_qty} {r.base_unit}s
+                        <div className="text-xs text-muted">{r.recommended_packs} {r.pack_label}(s)</div>
+                      </td>
+                      {isSuperAdmin && <td className="mono text-red">{fmt(r.estimated_cost)}</td>}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          {recommendations.length > 15 && (
+            <p className="text-muted text-xs text-center mt-2">+ {recommendations.length - 15} more items need reordering</p>
+          )}
         </div>
       )}
     </div>

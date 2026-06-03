@@ -100,13 +100,20 @@ export async function GET(req: NextRequest) {
       FROM cash_ledger WHERE type='owner_withdrawal' AND ${ledgerDateFilter}
     `)
 
+    // Net profit uses only operational expenses (exclude stock purchase - it's inventory, not expense)
+    const operationalExpenses = Number(expenseSummary.total_expenses) - Number(expenseSummary.stock_expenses)
+
     return NextResponse.json({
       data: {
         month,
         from, to,
         sales: { ...salesSummary, ...payBreakdown },
-        expenses: expenseSummary,
-        net_profit: Number(salesSummary.total_profit) - Number(expenseSummary.total_expenses),
+        expenses: {
+          ...expenseSummary,
+          // Override total_expenses to show only operational expenses (not stock)
+          operational_expenses: operationalExpenses,
+        },
+        net_profit: Number(salesSummary.total_profit) - operationalExpenses,
         daily_breakdown: dailyBreakdown,
         top_products: topProducts,
         credit: creditSummary,
