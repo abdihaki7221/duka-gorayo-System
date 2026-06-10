@@ -66,17 +66,18 @@ export async function GET(req: NextRequest) {
       FROM credit_payments WHERE paid_date = $1
     `, [date])
 
-    // Previous day safe balance calculation (exclude manual debts)
+    // Cumulative safe balance: ALL data before this date (not just yesterday)
+    // This correctly handles weekends, holidays, and gaps in operations
     const [prevCashSales] = await query(`
       SELECT COALESCE(SUM(sp.amount), 0) AS total
       FROM sale_payments sp JOIN sales s ON s.id = sp.sale_id
-      WHERE s.sale_date = $1 AND sp.method = 'cash' AND s.is_manual_debt = FALSE
-    `, [prevStr])
+      WHERE s.sale_date < $1 AND sp.method = 'cash' AND s.is_manual_debt = FALSE
+    `, [date])
 
     const [prevCreditCash] = await query(`
       SELECT COALESCE(SUM(amount), 0) AS total
-      FROM credit_payments WHERE paid_date = $1 AND method = 'cash'
-    `, [prevStr])
+      FROM credit_payments WHERE paid_date < $1 AND method = 'cash'
+    `, [date])
 
     const [prevLedger] = await query(`
       SELECT
@@ -85,13 +86,13 @@ export async function GET(req: NextRequest) {
         COALESCE(SUM(CASE WHEN type='cash_deposit' THEN amount ELSE 0 END), 0) AS deposits,
         COALESCE(SUM(CASE WHEN type='cash_excess' THEN amount ELSE 0 END), 0) AS cash_excess,
         COALESCE(SUM(CASE WHEN type='cash_less' THEN amount ELSE 0 END), 0) AS cash_less
-      FROM cash_ledger WHERE ledger_date = $1
-    `, [prevStr])
+      FROM cash_ledger WHERE ledger_date < $1
+    `, [date])
 
     const [prevExpCash] = await query(`
       SELECT COALESCE(SUM(amount), 0) AS total FROM expenses
-      WHERE expense_date = $1 AND payment_method = 'cash'
-    `, [prevStr])
+      WHERE expense_date < $1 AND category != 'Stock Purchase'
+    `, [date])
 
     const prevSafe = Number(prevLedger.opening) + Number(prevCashSales.total) +
       Number(prevCreditCash.total) + Number(prevLedger.deposits) +

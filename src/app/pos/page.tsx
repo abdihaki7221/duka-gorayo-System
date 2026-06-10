@@ -14,6 +14,14 @@ interface CartItem {
 interface PaymentRow { method: string; amount: string; reference: string }
 const METHODS = ['cash', 'mpesa', 'kcb', 'credit']
 
+interface HeldOrder {
+  id: string
+  customer_name: string
+  items: CartItem[]
+  saleDiscount: number
+  held_at: string
+}
+
 export default function POSPage() {
   const { isSuperAdmin } = useAuth()
   const [products, setProducts] = useState<any[]>([])
@@ -46,6 +54,16 @@ export default function POSPage() {
   const [receipt, setReceipt] = useState<any>(null)
   const [search, setSearch] = useState('')
 
+  // Hold orders state
+  const [heldOrders, setHeldOrders] = useState<HeldOrder[]>(() => {
+    if (typeof window !== 'undefined') {
+      try { const saved = localStorage.getItem('duka_held_orders'); return saved ? JSON.parse(saved) : [] }
+      catch { return [] }
+    }
+    return []
+  })
+  const [showHeldPanel, setShowHeldPanel] = useState(false)
+
   // Persist cart to localStorage
   useEffect(() => {
     try { localStorage.setItem('duka_cart', JSON.stringify(cart)) } catch {}
@@ -56,6 +74,50 @@ export default function POSPage() {
   useEffect(() => {
     try { localStorage.setItem('duka_sale_discount', String(saleDiscount)) } catch {}
   }, [saleDiscount])
+  // Persist held orders
+  useEffect(() => {
+    try { localStorage.setItem('duka_held_orders', JSON.stringify(heldOrders)) } catch {}
+  }, [heldOrders])
+
+  // Hold current order
+  function holdOrder() {
+    if (cart.length === 0) return toast.error('Cart is empty — nothing to hold')
+    const name = customerName || `Customer ${heldOrders.length + 1}`
+    const held: HeldOrder = {
+      id: Date.now().toString(),
+      customer_name: name,
+      items: [...cart],
+      saleDiscount,
+      held_at: new Date().toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' }),
+    }
+    setHeldOrders(prev => [...prev, held])
+    setCart([]); setCustomerName(''); setSaleDiscount(0)
+    setPayments([{ method: 'cash', amount: '', reference: '' }])
+    try { localStorage.removeItem('duka_cart'); localStorage.removeItem('duka_customer'); localStorage.removeItem('duka_sale_discount') } catch {}
+    toast.success(`🔒 Order held for "${name}" — ${held.items.length} item(s)`)
+  }
+
+  // Restore a held order to active cart
+  function restoreHeldOrder(held: HeldOrder) {
+    // If current cart has items, confirm
+    if (cart.length > 0) {
+      if (!confirm('Your current cart has items. Restoring will replace them. Hold current cart first?')) return
+    }
+    setCart(held.items)
+    setCustomerName(held.customer_name)
+    setSaleDiscount(held.saleDiscount)
+    setPayments([{ method: 'cash', amount: '', reference: '' }])
+    setHeldOrders(prev => prev.filter(h => h.id !== held.id))
+    setShowHeldPanel(false)
+    toast.success(`📂 Restored order for "${held.customer_name}"`)
+  }
+
+  // Delete a held order
+  function deleteHeldOrder(id: string) {
+    if (!confirm('Discard this held order?')) return
+    setHeldOrders(prev => prev.filter(h => h.id !== id))
+    toast.success('Held order discarded')
+  }
 
   useEffect(() => {
     fetch('/api/products').then(r => r.json()).then(d => setProducts(d.data || []))
@@ -182,10 +244,64 @@ export default function POSPage() {
 
   return (
     <div className="animate-in">
-      <div className="mb-5">
-        <h1 className="page-title">New Sale</h1>
-        <p className="page-sub">Add items, apply discounts, split payment if needed</p>
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-5">
+        <div>
+          <h1 className="page-title">New Sale</h1>
+          <p className="page-sub">Add items, apply discounts, split payment if needed</p>
+        </div>
+        {/* Held orders button */}
+        <button className={`btn ${heldOrders.length > 0 ? 'btn-primary' : 'btn-outline'} relative`}
+          onClick={() => setShowHeldPanel(!showHeldPanel)}>
+          🔒 Held Orders
+          {heldOrders.length > 0 && (
+            <span className="absolute -top-2 -right-2 bg-red text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+              {heldOrders.length}
+            </span>
+          )}
+        </button>
       </div>
+
+      {/* Held orders panel */}
+      {showHeldPanel && (
+        <div className="duka-card mb-4 border-2 border-accent/30">
+          <div className="flex justify-between items-center mb-3">
+            <div className="duka-card-title" style={{marginBottom:0}}>🔒 Held Orders ({heldOrders.length})</div>
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowHeldPanel(false)}>✕ Close</button>
+          </div>
+          {heldOrders.length === 0 ? (
+            <div className="empty-state py-4">No held orders. Use the "Hold" button in the cart to save an order for later.</div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {heldOrders.map(h => {
+                const total = h.items.reduce((a, c) => a + c.subtotal, 0) - h.saleDiscount
+                return (
+                  <div key={h.id} className="bg-surface2 rounded-lg p-4 border border-border hover:border-accent/50 transition-colors">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <div className="text-white font-semibold">{h.customer_name}</div>
+                        <div className="text-xs text-muted">Held at {h.held_at}</div>
+                      </div>
+                      <button className="btn btn-ghost btn-sm text-red" onClick={() => deleteHeldOrder(h.id)} title="Discard">🗑️</button>
+                    </div>
+                    <div className="text-sm text-muted mb-2">
+                      {h.items.length} item{h.items.length !== 1 ? 's' : ''} · <span className="mono text-accent font-semibold">{fmt(total)}</span>
+                    </div>
+                    <div className="text-xs text-muted mb-3 space-y-0.5">
+                      {h.items.slice(0, 3).map((item, i) => (
+                        <div key={i}>• {item.product_name} {item.denomination_label ? `(${item.denomination_label})` : ''} × {item.qty}</div>
+                      ))}
+                      {h.items.length > 3 && <div className="text-muted">...+{h.items.length - 3} more</div>}
+                    </div>
+                    <button className="btn btn-success btn-sm w-full" onClick={() => restoreHeldOrder(h)}>
+                      📂 Restore to Cart
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
         <div className="lg:col-span-3 space-y-4">
@@ -294,7 +410,12 @@ export default function POSPage() {
           <div className="duka-card">
             <div className="duka-card-title">
               🛒 Cart ({cart.length})
-              {cart.length > 0 && <button className="btn btn-ghost btn-sm text-red" onClick={() => { setCart([]); try { localStorage.removeItem('duka_cart') } catch {} }}>Clear All</button>}
+              {cart.length > 0 && (
+                <span className="inline-flex gap-2 ml-2">
+                  <button className="btn btn-outline btn-sm" onClick={holdOrder}>🔒 Hold</button>
+                  <button className="btn btn-ghost btn-sm text-red" onClick={() => { setCart([]); try { localStorage.removeItem('duka_cart') } catch {} }}>Clear All</button>
+                </span>
+              )}
             </div>
             {cart.length === 0 ? (
               <div className="empty-state">No items added</div>
