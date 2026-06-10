@@ -1,7 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, queryOne } from '@/lib/db'
 
-// Types: 'opening_balance', 'owner_withdrawal', 'cash_deposit', 'adjustment', 'cash_excess', 'cash_less'
+/**
+ * Opening balance logic:
+ * 
+ * Today's opening = last known safe balance (the closing balance of the most
+ * recent day before today). If shop was closed for 3 days, it carries forward.
+ * 
+ * To compute this without recursion:
+ * 1. Find the most recent manual opening_balance entry before today (the "anchor")
+ * 2. Sum all cash movements from that anchor date through yesterday
+ * 3. opening = anchor_amount + all net movements since that anchor date
+ * 
+ * If no anchor exists, start from 0.
+ */
 
 export async function GET(req: NextRequest) {
   try {
@@ -19,56 +31,87 @@ export async function GET(req: NextRequest) {
     const today = date || new Date().toISOString().split('T')[0]
 
     // ===================================================================
-    // FIX: Opening balance = cumulative closing balance of ALL days before today
-    // This works even if shop was closed yesterday, weekend, holidays, etc.
-    // The opening balance is the total of everything that ever happened before today.
+    // STEP 1: Find the most recent manual opening_balance before today
+    // This is the anchor point — a known starting balance
+    // ===================================================================
+    const anchor = await queryOne(`
+      SELECT amount, ledger_date::text as anchor_date
+      FROM cash_ledger
+      WHERE type = 'opening_balance' AND ledger_date <= $1
+      ORDER BY ledger_date DESC, created_at DESC
+      LIMIT 1
+    `, [today])
+
+    const anchorAmount = anchor ? Number(anchor.amount) : 0
+    const anchorDate = anchor ? anchor.anchor_date : '1970-01-01'
+
+    // ===================================================================
+    // STEP 2: Sum all cash movements AFTER the anchor date, up to yesterday
+    // These are the net changes since the last known opening was set
     // ===================================================================
 
-    // All cash sales up to and including yesterday (cumulative)
-    const [cumCashSales] = await query(`
+    // Cash sales after anchor, before today
+    const [movCashSales] = await query(`
       SELECT COALESCE(SUM(sp.amount), 0) as total
       FROM sale_payments sp
       JOIN sales s ON s.id = sp.sale_id
-      WHERE s.sale_date < $1 AND sp.method = 'cash' AND s.is_manual_debt = FALSE
-    `, [today])
+      WHERE s.sale_date >= $1 AND s.sale_date < $2
+        AND sp.method = 'cash' AND s.is_manual_debt = FALSE
+    `, [anchorDate, today])
 
-    // All credit cash payments received before today (cumulative)
-    const [cumCreditCash] = await query(`
+    // Credit cash payments after anchor, before today
+    const [movCreditCash] = await query(`
       SELECT COALESCE(SUM(amount), 0) as total
       FROM credit_payments
-      WHERE paid_date < $1 AND method = 'cash'
-    `, [today])
+      WHERE paid_date >= $1 AND paid_date < $2 AND method = 'cash'
+    `, [anchorDate, today])
 
-    // All ledger entries before today (cumulative)
-    const [cumLedger] = await query(`
+    // Ledger movements after anchor, before today (excluding opening_balance entries)
+    const [movLedger] = await query(`
       SELECT
-        COALESCE(SUM(CASE WHEN type='opening_balance' THEN amount ELSE 0 END), 0) as opening,
         COALESCE(SUM(CASE WHEN type='owner_withdrawal' THEN amount ELSE 0 END), 0) as withdrawals,
         COALESCE(SUM(CASE WHEN type='cash_deposit' THEN amount ELSE 0 END), 0) as deposits,
         COALESCE(SUM(CASE WHEN type='cash_excess' THEN amount ELSE 0 END), 0) as cash_excess,
         COALESCE(SUM(CASE WHEN type='cash_less' THEN amount ELSE 0 END), 0) as cash_less
-      FROM cash_ledger WHERE ledger_date < $1
-    `, [today])
+      FROM cash_ledger
+      WHERE ledger_date >= $1 AND ledger_date < $2
+        AND type != 'opening_balance'
+    `, [anchorDate, today])
 
-    // All expenses before today (non-stock, cumulative)
-    const [cumExpenses] = await query(`
+    // Expenses after anchor, before today
+    const [movExpenses] = await query(`
       SELECT COALESCE(SUM(amount), 0) as total FROM expenses
-      WHERE expense_date < $1 AND category != 'Stock Purchase'
+      WHERE expense_date >= $1 AND expense_date < $2
+        AND category != 'Stock Purchase'
+    `, [anchorDate, today])
+
+    // The safe balance as of end of yesterday = today's opening
+    const prevSafe = anchorAmount
+      + Number(movCashSales.total)
+      + Number(movCreditCash.total)
+      + Number(movLedger.deposits)
+      + Number(movLedger.cash_excess)
+      - Number(movLedger.withdrawals)
+      - Number(movExpenses.total)
+      - Number(movLedger.cash_less)
+
+    // ===================================================================
+    // STEP 3: Today's data (same day only)
+    // ===================================================================
+
+    // Check if there's a manual opening_balance override for TODAY specifically
+    const [todayLedger] = await query(`
+      SELECT
+        COALESCE(SUM(CASE WHEN type='opening_balance' THEN amount ELSE 0 END), 0) as opening,
+        COALESCE(SUM(CASE WHEN type='cash_deposit' THEN amount ELSE 0 END), 0) as deposits,
+        COALESCE(SUM(CASE WHEN type='cash_excess' THEN amount ELSE 0 END), 0) as cash_excess,
+        COALESCE(SUM(CASE WHEN type='cash_less' THEN amount ELSE 0 END), 0) as cash_less
+      FROM cash_ledger WHERE ledger_date = $1
     `, [today])
 
-    // The cumulative safe balance as of end of previous day = today's opening
-    const prevSafe = Number(cumLedger.opening)
-      + Number(cumCashSales.total)
-      + Number(cumCreditCash.total)
-      + Number(cumLedger.deposits)
-      + Number(cumLedger.cash_excess)
-      - Number(cumLedger.withdrawals)
-      - Number(cumExpenses.total)
-      - Number(cumLedger.cash_less)
-
-    // ===================================================================
-    // Today's data (same day only)
-    // ===================================================================
+    // If admin manually set today's opening, use that; otherwise use computed prevSafe
+    const hasManualOpening = Number(todayLedger.opening) > 0
+    const openingBal = hasManualOpening ? Number(todayLedger.opening) : prevSafe
 
     // Cash from sales today
     const [cashSales] = await query(`
@@ -92,26 +135,13 @@ export async function GET(req: NextRequest) {
       WHERE ledger_date = $1 AND type = 'owner_withdrawal'
     `, [today])
 
-    // Today's ledger entries (opening override, deposits, excess, less)
-    const [todayLedger] = await query(`
-      SELECT
-        COALESCE(SUM(CASE WHEN type='opening_balance' THEN amount ELSE 0 END), 0) as opening,
-        COALESCE(SUM(CASE WHEN type='cash_deposit' THEN amount ELSE 0 END), 0) as deposits,
-        COALESCE(SUM(CASE WHEN type='cash_excess' THEN amount ELSE 0 END), 0) as cash_excess,
-        COALESCE(SUM(CASE WHEN type='cash_less' THEN amount ELSE 0 END), 0) as cash_less
-      FROM cash_ledger WHERE ledger_date = $1
-    `, [today])
-
     // Today's expenses (non-stock)
     const [todayExp] = await query(`
       SELECT COALESCE(SUM(amount), 0) as total FROM expenses
       WHERE expense_date = $1 AND category != 'Stock Purchase'
     `, [today])
 
-    // If there's a manual opening_balance override for today, use that. Otherwise use cumulative prevSafe.
-    const openingBal = Number(todayLedger.opening) > 0 ? Number(todayLedger.opening) : prevSafe
-
-    // Today's safe balance = opening + today's inflows - today's outflows
+    // Safe balance = opening + today's cash in - today's cash out
     const safeBalance = openingBal
       + Number(cashSales.total)
       + Number(creditCash.total)

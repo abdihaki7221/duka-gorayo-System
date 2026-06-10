@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { query } from '@/lib/db'
+import { query, queryOne } from '@/lib/db'
 
 export async function GET(req: NextRequest) {
   try {
@@ -66,35 +66,43 @@ export async function GET(req: NextRequest) {
       FROM credit_payments WHERE paid_date = $1
     `, [date])
 
-    // Cumulative safe balance: ALL data before this date (not just yesterday)
-    // This correctly handles weekends, holidays, and gaps in operations
+    // Opening balance: find last manual opening_balance anchor, then sum movements since
+    const anchor = await queryOne(`
+      SELECT amount, ledger_date::text as anchor_date
+      FROM cash_ledger
+      WHERE type = 'opening_balance' AND ledger_date <= $1
+      ORDER BY ledger_date DESC, created_at DESC LIMIT 1
+    `, [date])
+
+    const anchorAmount = anchor ? Number(anchor.amount) : 0
+    const anchorDate = anchor ? anchor.anchor_date : '1970-01-01'
+
     const [prevCashSales] = await query(`
       SELECT COALESCE(SUM(sp.amount), 0) AS total
       FROM sale_payments sp JOIN sales s ON s.id = sp.sale_id
-      WHERE s.sale_date < $1 AND sp.method = 'cash' AND s.is_manual_debt = FALSE
-    `, [date])
+      WHERE s.sale_date >= $1 AND s.sale_date < $2 AND sp.method = 'cash' AND s.is_manual_debt = FALSE
+    `, [anchorDate, date])
 
     const [prevCreditCash] = await query(`
       SELECT COALESCE(SUM(amount), 0) AS total
-      FROM credit_payments WHERE paid_date < $1 AND method = 'cash'
-    `, [date])
+      FROM credit_payments WHERE paid_date >= $1 AND paid_date < $2 AND method = 'cash'
+    `, [anchorDate, date])
 
     const [prevLedger] = await query(`
       SELECT
-        COALESCE(SUM(CASE WHEN type='opening_balance' THEN amount ELSE 0 END), 0) AS opening,
         COALESCE(SUM(CASE WHEN type='owner_withdrawal' THEN amount ELSE 0 END), 0) AS withdrawals,
         COALESCE(SUM(CASE WHEN type='cash_deposit' THEN amount ELSE 0 END), 0) AS deposits,
         COALESCE(SUM(CASE WHEN type='cash_excess' THEN amount ELSE 0 END), 0) AS cash_excess,
         COALESCE(SUM(CASE WHEN type='cash_less' THEN amount ELSE 0 END), 0) AS cash_less
-      FROM cash_ledger WHERE ledger_date < $1
-    `, [date])
+      FROM cash_ledger WHERE ledger_date >= $1 AND ledger_date < $2 AND type != 'opening_balance'
+    `, [anchorDate, date])
 
     const [prevExpCash] = await query(`
       SELECT COALESCE(SUM(amount), 0) AS total FROM expenses
-      WHERE expense_date < $1 AND category != 'Stock Purchase'
-    `, [date])
+      WHERE expense_date >= $1 AND expense_date < $2 AND category != 'Stock Purchase'
+    `, [anchorDate, date])
 
-    const prevSafe = Number(prevLedger.opening) + Number(prevCashSales.total) +
+    const prevSafe = anchorAmount + Number(prevCashSales.total) +
       Number(prevCreditCash.total) + Number(prevLedger.deposits) +
       Number(prevLedger.cash_excess) -
       Number(prevLedger.withdrawals) - Number(prevExpCash.total) -
