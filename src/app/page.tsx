@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { fmt, fmtTime, today } from '@/lib/utils'
 import { useAuth } from '@/components/AuthContext'
-
+///starter
 const PAY_BADGE: Record<string, string> = {
   cash: 'badge-green', mpesa: 'badge-blue', kcb: 'badge-yellow', credit: 'badge-red'
 }
