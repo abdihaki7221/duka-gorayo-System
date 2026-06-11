@@ -72,17 +72,18 @@ export async function GET(req: NextRequest) {
         COALESCE(SUM(CASE WHEN type='owner_withdrawal' THEN amount ELSE 0 END), 0) as withdrawals,
         COALESCE(SUM(CASE WHEN type='cash_deposit' THEN amount ELSE 0 END), 0) as deposits,
         COALESCE(SUM(CASE WHEN type='cash_excess' THEN amount ELSE 0 END), 0) as cash_excess,
-        COALESCE(SUM(CASE WHEN type='cash_less' THEN amount ELSE 0 END), 0) as cash_less
+        COALESCE(SUM(CASE WHEN type='cash_less' THEN amount ELSE 0 END), 0) as cash_less,
+        COALESCE(SUM(CASE WHEN type='cash_receipt' THEN amount ELSE 0 END), 0) as cash_receipts
       FROM cash_ledger
       WHERE ledger_date >= $1 AND ledger_date < $2
         AND type != 'opening_balance'
     `, [anchorDate, today])
 
-    // Expenses after anchor, before today
+    // Expenses after anchor, before today (use cash_amount for safe impact)
+    // Stock Payments paid with cash reduce the safe, non-stock expenses paid with cash also reduce it
     const [movExpenses] = await query(`
-      SELECT COALESCE(SUM(amount), 0) as total FROM expenses
+      SELECT COALESCE(SUM(cash_amount), 0) as total FROM expenses
       WHERE expense_date >= $1 AND expense_date < $2
-        AND category != 'Stock Purchase'
     `, [anchorDate, today])
 
     // The safe balance as of end of yesterday = today's opening
@@ -91,6 +92,7 @@ export async function GET(req: NextRequest) {
       + Number(movCreditCash.total)
       + Number(movLedger.deposits)
       + Number(movLedger.cash_excess)
+      + Number(movLedger.cash_receipts)
       - Number(movLedger.withdrawals)
       - Number(movExpenses.total)
       - Number(movLedger.cash_less)
@@ -105,7 +107,8 @@ export async function GET(req: NextRequest) {
         COALESCE(SUM(CASE WHEN type='opening_balance' THEN amount ELSE 0 END), 0) as opening,
         COALESCE(SUM(CASE WHEN type='cash_deposit' THEN amount ELSE 0 END), 0) as deposits,
         COALESCE(SUM(CASE WHEN type='cash_excess' THEN amount ELSE 0 END), 0) as cash_excess,
-        COALESCE(SUM(CASE WHEN type='cash_less' THEN amount ELSE 0 END), 0) as cash_less
+        COALESCE(SUM(CASE WHEN type='cash_less' THEN amount ELSE 0 END), 0) as cash_less,
+        COALESCE(SUM(CASE WHEN type='cash_receipt' THEN amount ELSE 0 END), 0) as cash_receipts
       FROM cash_ledger WHERE ledger_date = $1
     `, [today])
 
@@ -135,10 +138,10 @@ export async function GET(req: NextRequest) {
       WHERE ledger_date = $1 AND type = 'owner_withdrawal'
     `, [today])
 
-    // Today's expenses (non-stock)
+    // Today's expenses — only cash portion affects the safe
     const [todayExp] = await query(`
-      SELECT COALESCE(SUM(amount), 0) as total FROM expenses
-      WHERE expense_date = $1 AND category != 'Stock Purchase'
+      SELECT COALESCE(SUM(cash_amount), 0) as total FROM expenses
+      WHERE expense_date = $1
     `, [today])
 
     // Safe balance = opening + today's cash in - today's cash out
@@ -147,6 +150,7 @@ export async function GET(req: NextRequest) {
       + Number(creditCash.total)
       + Number(todayLedger.deposits)
       + Number(todayLedger.cash_excess)
+      + Number(todayLedger.cash_receipts)
       - Number(withdrawals.total)
       - Number(todayExp.total)
       - Number(todayLedger.cash_less)
@@ -165,6 +169,7 @@ export async function GET(req: NextRequest) {
           cash_expenses: Number(todayExp.total),
           cash_excess: Number(todayLedger.cash_excess),
           cash_less: Number(todayLedger.cash_less),
+          cash_receipts: Number(todayLedger.cash_receipts),
           safe_balance: safeBalance,
         }
       }

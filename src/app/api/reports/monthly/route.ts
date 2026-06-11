@@ -46,9 +46,9 @@ export async function GET(req: NextRequest) {
     const [expenseSummary] = await query(`
       SELECT
         COALESCE(SUM(amount), 0) AS total_expenses,
-        COALESCE(SUM(CASE WHEN category='Stock Purchase' THEN amount ELSE 0 END), 0) AS stock_expenses,
+        COALESCE(SUM(CASE WHEN category IN ('Stock Purchase','Stock Payment') THEN amount ELSE 0 END), 0) AS stock_expenses,
         COALESCE(SUM(CASE WHEN category='Transport' THEN amount ELSE 0 END), 0) AS transport_expenses,
-        COALESCE(SUM(CASE WHEN category NOT IN ('Stock Purchase','Transport') THEN amount ELSE 0 END), 0) AS other_expenses
+        COALESCE(SUM(CASE WHEN category NOT IN ('Stock Purchase','Stock Payment','Transport') THEN amount ELSE 0 END), 0) AS other_expenses
       FROM expenses WHERE ${expDateFilter}
     `)
 

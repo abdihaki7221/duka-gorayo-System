@@ -169,8 +169,12 @@ export default function Dashboard() {
             <div className="flex justify-between py-1.5"><span className="text-sub text-sm">Opening Balance</span><span className="mono text-sm">{fmt(c.opening_balance||0)}</span></div>
             <div className="flex justify-between py-1.5"><span className="text-sub text-sm">+ Cash Sales</span><span className="mono text-sm text-green">{fmt(c.cash_sales||0)}</span></div>
             <div className="flex justify-between py-1.5"><span className="text-sub text-sm">+ Debt Cash Received</span><span className="mono text-sm text-green">{fmt(c.credit_cash_received||0)}</span></div>
+            {Number(c.deposits||0) > 0 && <div className="flex justify-between py-1.5"><span className="text-sub text-sm">+ Deposits</span><span className="mono text-sm text-green">{fmt(c.deposits||0)}</span></div>}
+            {Number(c.cash_receipts||0) > 0 && <div className="flex justify-between py-1.5"><span className="text-sub text-sm">+ Cash Receipts</span><span className="mono text-sm text-green">{fmt(c.cash_receipts||0)}</span></div>}
+            {Number(c.cash_excess||0) > 0 && <div className="flex justify-between py-1.5"><span className="text-sub text-sm">+ Cash Excess</span><span className="mono text-sm text-green">{fmt(c.cash_excess||0)}</span></div>}
             <div className="flex justify-between py-1.5"><span className="text-sub text-sm">- Owner Withdrawal</span><span className="mono text-sm text-red">{fmt(c.owner_withdrawals||0)}</span></div>
             <div className="flex justify-between py-1.5"><span className="text-sub text-sm">- Cash Expenses</span><span className="mono text-sm text-red">{fmt(c.cash_expenses||0)}</span></div>
+            {Number(c.cash_less||0) > 0 && <div className="flex justify-between py-1.5"><span className="text-sub text-sm">- Cash Shortage</span><span className="mono text-sm text-red">{fmt(c.cash_less||0)}</span></div>}
             <div className="flex justify-between pt-2 border-t border-border font-bold">
               <span className="text-sm">Safe Balance</span>
               <span className={`mono ${Number(c.safe_balance||0) >= 0 ? 'text-green' : 'text-red'}`}>{fmt(c.safe_balance||0)}</span>

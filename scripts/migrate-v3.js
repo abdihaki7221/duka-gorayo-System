@@ -232,6 +232,14 @@ INSERT INTO categories (name) VALUES
   ('Toiletries & Soap'),('Water')
 ON CONFLICT (name) DO NOTHING;
 
+-- V6: Split payments for expenses, stock payment metadata, cash receipts
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS cash_amount NUMERIC(12,2) NOT NULL DEFAULT 0;
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS payment_breakdown JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS stock_product_name VARCHAR(200);
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS stock_quantity NUMERIC(12,2);
+-- Backfill: for existing expenses, set cash_amount = amount where payment_method is cash
+UPDATE expenses SET cash_amount = amount WHERE payment_method = 'cash' AND cash_amount = 0;
+
 
 `
 

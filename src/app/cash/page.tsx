@@ -127,8 +127,8 @@ export default function CashPage() {
             </div>
             <div className="stat-card yellow">
               <div className="stat-label">Cash In Today</div>
-              <div className="stat-value">{Number((s.cash_sales||0)+(s.credit_cash_received||0)+(s.deposits||0)).toLocaleString('en-KE',{maximumFractionDigits:0})}</div>
-              <div className="stat-sub">Cash sales + debt payments + deposits</div>
+              <div className="stat-value">{Number((s.cash_sales||0)+(s.credit_cash_received||0)+(s.deposits||0)+(s.cash_receipts||0)).toLocaleString('en-KE',{maximumFractionDigits:0})}</div>
+              <div className="stat-sub">Cash sales + debt payments + deposits + receipts</div>
             </div>
             <div className="stat-card red">
               <div className="stat-label">Owner Withdrawals</div>
@@ -148,6 +148,7 @@ export default function CashPage() {
                   { label: '+ Cash Sales (excl. credit)', val: s.cash_sales, cls: 'text-green' },
                   { label: '+ Debt Cash Received', val: s.credit_cash_received, cls: 'text-green' },
                   { label: '+ Deposits', val: s.deposits, cls: 'text-green' },
+                  { label: '+ Cash Receipts (petty cash, returns)', val: s.cash_receipts, cls: 'text-green' },
                   { label: '- Owner Withdrawals', val: s.owner_withdrawals, cls: 'text-red' },
                   { label: '- Cash Expenses', val: s.cash_expenses, cls: 'text-red' },
                   ...(Number(s.cash_excess || 0) > 0 ? [{ label: '+ Cash Excess (from count)', val: s.cash_excess, cls: 'text-green' }] : []),
@@ -257,6 +258,7 @@ export default function CashPage() {
                   onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
                   <option value="adjustment">🔧 Adjustment</option>
                   <option value="cash_deposit">💰 Cash Deposit (add to safe)</option>
+                  <option value="cash_receipt">🧾 Cash Receipt (petty cash, supplier discount, balance returned)</option>
                   <option value="opening_balance">📂 Set Opening Balance</option>
                   <option value="owner_withdrawal">💼 Owner Withdrawal (give to owner)</option>
                 </select>

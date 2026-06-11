@@ -92,8 +92,12 @@ export default function DailyPage() {
           <Row label="Opening Balance" value={fmt(c.opening_balance||0)} />
           <Row label="+ Cash Sales" value={fmt(c.cash_sales||0)} cls="text-green" />
           <Row label="+ Debt Cash" value={fmt(c.credit_cash_received||0)} cls="text-green" />
+          {Number(c.deposits||0) > 0 && <Row label="+ Deposits" value={fmt(c.deposits||0)} cls="text-green" />}
+          {Number(c.cash_receipts||0) > 0 && <Row label="+ Cash Receipts" value={fmt(c.cash_receipts||0)} cls="text-green" />}
+          {Number(c.cash_excess||0) > 0 && <Row label="+ Cash Excess" value={fmt(c.cash_excess||0)} cls="text-green" />}
           <Row label="- Owner Withdrawals" value={fmt(c.owner_withdrawals||0)} cls="text-red" />
           <Row label="- Cash Expenses" value={fmt(c.cash_expenses||0)} cls="text-red" />
+          {Number(c.cash_less||0) > 0 && <Row label="- Cash Shortage" value={fmt(c.cash_less||0)} cls="text-red" />}
           <div className="pt-2 border-t border-border mt-1">
             <Row label="= Safe Balance" value={fmt(c.safe_balance||0)} cls={Number(c.safe_balance||0)>=0?'text-green':'text-red'} />
           </div>

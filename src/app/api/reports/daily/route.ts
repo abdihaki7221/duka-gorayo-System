@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
     const [expenseSummary] = await query(`
       SELECT
         COALESCE(SUM(amount), 0) AS total_expenses,
-        COALESCE(SUM(CASE WHEN category='Stock Purchase' THEN amount ELSE 0 END), 0) AS stock_expenses,
+        COALESCE(SUM(CASE WHEN category IN ('Stock Purchase','Stock Payment') THEN amount ELSE 0 END), 0) AS stock_expenses,
         COALESCE(SUM(CASE WHEN category='Transport' THEN amount ELSE 0 END), 0) AS transport_expenses,
         COALESCE(SUM(CASE WHEN category='Employee Salary' THEN amount ELSE 0 END), 0) AS salary_expenses,
         COALESCE(SUM(CASE WHEN category NOT IN ('Stock Purchase','Transport','Employee Salary') THEN amount ELSE 0 END), 0) AS other_expenses,
@@ -93,31 +93,49 @@ export async function GET(req: NextRequest) {
         COALESCE(SUM(CASE WHEN type='owner_withdrawal' THEN amount ELSE 0 END), 0) AS withdrawals,
         COALESCE(SUM(CASE WHEN type='cash_deposit' THEN amount ELSE 0 END), 0) AS deposits,
         COALESCE(SUM(CASE WHEN type='cash_excess' THEN amount ELSE 0 END), 0) AS cash_excess,
-        COALESCE(SUM(CASE WHEN type='cash_less' THEN amount ELSE 0 END), 0) AS cash_less
+        COALESCE(SUM(CASE WHEN type='cash_less' THEN amount ELSE 0 END), 0) AS cash_less,
+        COALESCE(SUM(CASE WHEN type='cash_receipt' THEN amount ELSE 0 END), 0) AS cash_receipts
       FROM cash_ledger WHERE ledger_date >= $1 AND ledger_date < $2 AND type != 'opening_balance'
     `, [anchorDate, date])
 
     const [prevExpCash] = await query(`
-      SELECT COALESCE(SUM(amount), 0) AS total FROM expenses
-      WHERE expense_date >= $1 AND expense_date < $2 AND category != 'Stock Purchase'
+      SELECT COALESCE(SUM(cash_amount), 0) AS total FROM expenses
+      WHERE expense_date >= $1 AND expense_date < $2
     `, [anchorDate, date])
 
     const prevSafe = anchorAmount + Number(prevCashSales.total) +
       Number(prevCreditCash.total) + Number(prevLedger.deposits) +
-      Number(prevLedger.cash_excess) -
+      Number(prevLedger.cash_excess) + Number(prevLedger.cash_receipts) -
       Number(prevLedger.withdrawals) - Number(prevExpCash.total) -
       Number(prevLedger.cash_less)
 
-    // Today's safe
+    // Today's safe — matching cash-ledger module calculation exactly
     const openingBal = Number(cashLedger.opening_set) > 0 ? Number(cashLedger.opening_set) : Math.max(0, prevSafe)
+
+    // Today's ledger: get all types including cash_receipt, cash_excess, cash_less
+    const [todayLedgerFull] = await query(`
+      SELECT
+        COALESCE(SUM(CASE WHEN type='cash_deposit' THEN amount ELSE 0 END), 0) AS deposits,
+        COALESCE(SUM(CASE WHEN type='cash_excess' THEN amount ELSE 0 END), 0) AS cash_excess,
+        COALESCE(SUM(CASE WHEN type='cash_less' THEN amount ELSE 0 END), 0) AS cash_less,
+        COALESCE(SUM(CASE WHEN type='cash_receipt' THEN amount ELSE 0 END), 0) AS cash_receipts
+      FROM cash_ledger WHERE ledger_date = $1
+    `, [date])
+
+    // Today's expenses — only cash portion affects the safe
     const [todayExpCash] = await query(`
-      SELECT COALESCE(SUM(amount), 0) AS total FROM expenses
-      WHERE expense_date = $1 AND payment_method = 'cash'
+      SELECT COALESCE(SUM(cash_amount), 0) AS total FROM expenses
+      WHERE expense_date = $1
     `, [date])
 
     const safeBalance = openingBal + Number(payBreakdown.cash_sales) +
-      Number(creditPayments.cash_received) + Number(cashLedger.deposits) -
-      Number(cashLedger.owner_withdrawals) - Number(todayExpCash.total)
+      Number(creditPayments.cash_received) +
+      Number(todayLedgerFull.deposits) +
+      Number(todayLedgerFull.cash_excess) +
+      Number(todayLedgerFull.cash_receipts) -
+      Number(cashLedger.owner_withdrawals) -
+      Number(todayExpCash.total) -
+      Number(todayLedgerFull.cash_less)
 
     // 7-day trend
     const trend = await query(`
@@ -178,9 +196,12 @@ export async function GET(req: NextRequest) {
           opening_balance: openingBal,
           cash_sales: Number(payBreakdown.cash_sales),
           credit_cash_received: Number(creditPayments.cash_received),
-          deposits: Number(cashLedger.deposits),
+          deposits: Number(todayLedgerFull.deposits),
+          cash_receipts: Number(todayLedgerFull.cash_receipts),
           owner_withdrawals: Number(cashLedger.owner_withdrawals),
           cash_expenses: Number(todayExpCash.total),
+          cash_excess: Number(todayLedgerFull.cash_excess),
+          cash_less: Number(todayLedgerFull.cash_less),
           safe_balance: safeBalance,
         },
         credit_payments_today: creditPayments,
