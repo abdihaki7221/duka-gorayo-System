@@ -91,10 +91,24 @@ function styleHeader(ws: any, columns: readonly { header: string; note: string }
   })
 }
 
-export async function buildStockTemplate(
+/**
+ * Add one data-validation rule covering a whole column range.
+ *
+ * Do NOT set `cell.dataValidation` cell-by-cell: exceljs then "optimises" the
+ * cells back into ranges after a string sort ("A10" < "A2") and writes
+ * OVERLAPPING rules (A2:A501 and A10:A501). Excel treats overlapping rules as
+ * a corrupt file and silently drops the dropdowns. Range keys are written as-is.
+ */
+function addColumnValidation(ws: any, colIndex: number, firstRow: number, lastRow: number, rule: any) {
+  const L = ws.getColumn(colIndex).letter
+  ws.dataValidations.add(`${L}${firstRow}:${L}${lastRow}`, rule)
+}
+
+/** Build the template workbook (exceljs Workbook) so callers can pre-fill it before writing. */
+export function buildStockWorkbook(
   ExcelJS: any,
   opts: { categories: string[]; suppliers: string[] }
-): Promise<ArrayBuffer> {
+): any {
   const wb = new ExcelJS.Workbook()
   wb.creator = 'Gorayo Wholesalers'
   wb.created = new Date()
@@ -114,53 +128,47 @@ export async function buildStockTemplate(
     showErrorMessage: true, errorTitle: 'Number needed', error: msg,
   })
 
-  for (let r = 2; r <= last; r++) {
-    const row = stock.getRow(r)
-    row.getCell(col('category')).dataValidation = {
-      type: 'list', allowBlank: true, formulae: [`Lists!$A$2:$A$${categories.length + 1}`],
-      showErrorMessage: true, errorStyle: 'warning', errorTitle: 'New category',
-      error: 'This category is not in the list. It will be created when you upload.',
-    }
-    row.getCell(col('supplier')).dataValidation = {
-      type: 'list', allowBlank: true, formulae: [`Lists!$B$2:$B$${suppliers.length + 1}`],
-      showErrorMessage: true, errorStyle: 'warning', errorTitle: 'New supplier',
-      error: 'This supplier is not in the list. It will be added when you upload.',
-    }
-    row.getCell(col('base_unit')).dataValidation = {
-      type: 'list', allowBlank: true, formulae: ['"litre,kg,packet,unit"'],
-      showErrorMessage: true, errorTitle: 'Base unit', error: 'Choose litre, kg, packet or unit.',
-    }
-    row.getCell(col('sell_mode')).dataValidation = {
-      type: 'list', allowBlank: true, formulae: ['"Both,Retail only,Wholesale only"'],
-      showErrorMessage: true, errorTitle: 'Sell mode', error: 'Choose Both, Retail only or Wholesale only.',
-    }
-    for (const k of ['qty', 'buy_price', 'transport_cost', 'ws_pack_qty', 'ws_buy_price', 'ws_price', 'low_stock_threshold']) {
-      row.getCell(col(k)).dataValidation = numVal(0, 'Enter a number (no letters or "KES").')
-      row.getCell(col(k)).numFmt = k === 'qty' || k === 'ws_pack_qty' || k === 'low_stock_threshold' ? '0.##' : '#,##0.00'
-    }
-    const exp = row.getCell(col('expiry_date'))
-    exp.numFmt = 'yyyy-mm-dd'
-    exp.dataValidation = {
-      type: 'date', operator: 'greaterThan', allowBlank: true, formulae: [new Date(Date.UTC(2000, 0, 1))],
-      showErrorMessage: true, errorTitle: 'Expiry date', error: 'Enter a date like 2026-12-31.',
-    }
+  addColumnValidation(stock, col('category'), 2, last, {
+    type: 'list', allowBlank: true, formulae: [`Lists!$A$2:$A$${categories.length + 1}`],
+    showErrorMessage: true, errorStyle: 'warning', errorTitle: 'New category',
+    error: 'This category is not in the list. It will be created when you upload.',
+  })
+  addColumnValidation(stock, col('supplier'), 2, last, {
+    type: 'list', allowBlank: true, formulae: [`Lists!$B$2:$B$${suppliers.length + 1}`],
+    showErrorMessage: true, errorStyle: 'warning', errorTitle: 'New supplier',
+    error: 'This supplier is not in the list. It will be added when you upload.',
+  })
+  addColumnValidation(stock, col('base_unit'), 2, last, {
+    type: 'list', allowBlank: true, formulae: ['"litre,kg,packet,unit"'],
+    showErrorMessage: true, errorTitle: 'Base unit', error: 'Choose litre, kg, packet or unit.',
+  })
+  addColumnValidation(stock, col('sell_mode'), 2, last, {
+    type: 'list', allowBlank: true, formulae: ['"Both,Retail only,Wholesale only"'],
+    showErrorMessage: true, errorTitle: 'Sell mode', error: 'Choose Both, Retail only or Wholesale only.',
+  })
+  for (const k of ['qty', 'buy_price', 'transport_cost', 'ws_pack_qty', 'ws_buy_price', 'ws_price', 'low_stock_threshold']) {
+    addColumnValidation(stock, col(k), 2, last, numVal(0, 'Enter a number (no letters or "KES").'))
+    stock.getColumn(col(k)).numFmt = k === 'qty' || k === 'ws_pack_qty' || k === 'low_stock_threshold' ? '0.##' : '#,##0.00'
   }
+  stock.getColumn(col('expiry_date')).numFmt = 'yyyy-mm-dd'
+  addColumnValidation(stock, col('expiry_date'), 2, last, {
+    type: 'date', operator: 'greaterThan', allowBlank: true, formulae: [new Date(Date.UTC(2000, 0, 1))],
+    showErrorMessage: true, errorTitle: 'Expiry date', error: 'Enter a date like 2026-12-31.',
+  })
 
   // --- Retail Sizes sheet --------------------------------------------------
   const sizes = wb.addWorksheet('Retail Sizes', { views: [{ state: 'frozen', ySplit: 1 }] })
   sizes.columns = SIZE_COLUMNS.map(c => ({ key: c.key, width: c.width }))
   styleHeader(sizes, SIZE_COLUMNS)
-  for (let r = 2; r <= TEMPLATE_ROWS * 3 + 1; r++) {
-    const row = sizes.getRow(r)
-    row.getCell(1).dataValidation = {
-      type: 'list', allowBlank: true, formulae: [`Stock!$A$2:$A$${last}`],
-      showErrorMessage: true, errorStyle: 'warning', errorTitle: 'Unknown product',
-      error: 'This name is not on the Stock sheet. Sizes must match a product exactly.',
-    }
-    row.getCell(3).dataValidation = numVal(0, 'Enter a number like 0.25, or leave blank.')
-    row.getCell(4).dataValidation = numVal(0, 'Enter a number (no letters or "KES").')
-    row.getCell(4).numFmt = '#,##0.00'
-  }
+  const sizeLast = TEMPLATE_ROWS * 3 + 1
+  addColumnValidation(sizes, 1, 2, sizeLast, {
+    type: 'list', allowBlank: true, formulae: [`Stock!$A$2:$A$${last}`],
+    showErrorMessage: true, errorStyle: 'warning', errorTitle: 'Unknown product',
+    error: 'This name is not on the Stock sheet. Sizes must match a product exactly.',
+  })
+  addColumnValidation(sizes, 3, 2, sizeLast, numVal(0, 'Enter a number like 0.25, or leave blank.'))
+  addColumnValidation(sizes, 4, 2, sizeLast, numVal(0, 'Enter a number (no letters or "KES").'))
+  sizes.getColumn(4).numFmt = '#,##0.00'
 
   // --- How to fill (instructions + examples) ------------------------------
   const how = wb.addWorksheet('How to fill')
@@ -224,7 +232,14 @@ export async function buildStockTemplate(
   lists.state = 'hidden'
 
   wb.views = [{ activeTab: 0, firstSheet: 0 }]
-  return wb.xlsx.writeBuffer()
+  return wb
+}
+
+export async function buildStockTemplate(
+  ExcelJS: any,
+  opts: { categories: string[]; suppliers: string[] }
+): Promise<ArrayBuffer> {
+  return buildStockWorkbook(ExcelJS, opts).xlsx.writeBuffer()
 }
 
 // ---------------------------------------------------------------------------
